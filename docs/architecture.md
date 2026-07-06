@@ -69,6 +69,3 @@ The redaction model (Gemma) and the swap/un-swap logic run **inside the customer
 3. **Structured JSON output from Gemma.** Rather than free-text detection, Gemma is prompted to return a structured list of entities (type + span), which is what the swap logic actually needs — this also makes detection quality easier to evaluate and debug.
 4. **AMD GPU as the trust boundary, not just a compute choice.** Running the detection model on AMD infrastructure the customer controls (via ROCm) is the actual product claim, not incidental — it's what makes "the redactor never leaves your building" true rather than aspirational.
 
-## Related docs
-
-- [`build-plan.md`](build-plan.md) — detailed research, technical comparisons, and day-by-day build plan
