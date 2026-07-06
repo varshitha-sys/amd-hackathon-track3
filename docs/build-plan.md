@@ -1,4 +1,4 @@
-# Building a Nightfall-Style "LLM Firewall" for the AMD Developer Hackathon: ACT II — Implementation Plan
+# Building a placeholdertext-Style "LLM Firewall" for the AMD Developer Hackathon: ACT II — Implementation Plan
 
 ## TL;DR
 - **Build an "AI DLP prompt firewall" for the Unicorn Track (Track 3):** a two-stage detection pipeline where a fast open-source PII/NER model (GLiNER-PII or Piiranha) runs on an AMD Instinct MI300X on AMD Developer Cloud for first-pass span detection, and a Fireworks AI LLM (Llama/Qwen/GLM/Gemma with JSON mode) does contextual classification, risk scoring, and redaction reasoning — enforced through a policy engine (block / redact / warn) with an audit-log dashboard.
@@ -17,13 +17,13 @@
 - **Team size:** no explicit numeric cap is published for this event; solo through small teams are clearly allowed, so a 5-person team is fine.
 - **Note on conflicting figures:** a third-party aggregator lists a "$10,000 pool ($5,000/$3,000/$2,000)" — that is outdated; trust the official lablab.ai figures ($21,000 total, $2,500/$1,500/$1,000 per track).
 
-### How Nightfall's "Firewall for AI" actually works (your reference model)
-- **Launched May 22, 2024** — Nightfall's press release headline: "Nightfall Launches Firewall for AI to Secure GPT-4o," quoting CTO Rohan Sathe. Nightfall describes it as a **"client wrapper"** that protects interactions with GenAI apps and pipelines — it is **API-driven and agentless**, integrating via APIs/SDKs rather than sitting inline as a network reverse proxy. Nightfall explicitly recommends an **"API-centric approach"** over inline reverse-proxy interception to avoid latency.
-- **Detection is ML-based, not regex.** Nightfall documentation states it can "programmatically scan text and file inputs using 150+ detectors," spanning **PII, PCI, PHI, and secrets/credentials**, plus image and file classifiers. Per SC Media's 2024 SC Awards coverage, Nightfall's engine is "Built with over 100 million parameters," powered by AI/NLP with "85% more accuracy than traditional regex-based tools." PII/PCI use a **CNN with LLM-generated embeddings** for context; PHI uses a transformer that maps health data to individuals; secrets use a fine-tuned model. Per nightfall.ai/firewall-for-ai, they claim: "≥95% precision/recall • ≥99.9% request success rate • ≥1k RPS peak throughput • ≤100ms P99 latency, for 4 or a more detectors."
+### How placeholdertext's "Firewall for AI" actually works (your reference model)
+- **Launched May 22, 2024** — placeholdertext's press release headline: "placeholdertext Launches Firewall for AI to Secure GPT-4o," quoting CTO Rohan Sathe. placeholdertext describes it as a **"client wrapper"** that protects interactions with GenAI apps and pipelines — it is **API-driven and agentless**, integrating via APIs/SDKs rather than sitting inline as a network reverse proxy. placeholdertext explicitly recommends an **"API-centric approach"** over inline reverse-proxy interception to avoid latency.
+- **Detection is ML-based, not regex.** placeholdertext documentation states it can "programmatically scan text and file inputs using 150+ detectors," spanning **PII, PCI, PHI, and secrets/credentials**, plus image and file classifiers. Per SC Media's 2024 SC Awards coverage, placeholdertext's engine is "Built with over 100 million parameters," powered by AI/NLP with "85% more accuracy than traditional regex-based tools." PII/PCI use a **CNN with LLM-generated embeddings** for context; PHI uses a transformer that maps health data to individuals; secrets use a fine-tuned model. Per placeholdertext.ai/firewall-for-ai, they claim: "≥95% precision/recall • ≥99.9% request success rate • ≥1k RPS peak throughput • ≤100ms P99 latency, for 4 or a more detectors."
 - **Detector examples:** PII (name, DOB, address, email, phone, **SSN**, driver's license, VIN, ITIN), PHI (ICD10, NPI, MBI), Secrets (API key, DB connection string, password), Images (passport, driver's license, credit card, SSN card).
-- **Policy actions:** Nightfall frames actions as **blocking, redaction, quarantine, deletion, or warning/coaching**. For LLM prompts the sensible defaults are **"redact and allow" for medium risk** and **"block and route to review" for high risk (PHI, full payment data)**.
+- **Policy actions:** placeholdertext frames actions as **blocking, redaction, quarantine, deletion, or warning/coaching**. For LLM prompts the sensible defaults are **"redact and allow" for medium risk** and **"block and route to review" for high risk (PHI, full payment data)**.
 - **Deployment forms:** (1) the **Developer Platform** (REST API + SDKs in Python/Java/Node/Go, scan text/files, webhook callback with JSON findings, confidence levels LIKELY/VERY_LIKELY, character offsets), and (2) a **lightweight browser extension** ("Firewall for AI Copilots") that "secures ChatGPT, Gemini, Claude, and more in minutes" and sanitizes/blocks prompts with in-app coaching, deployable via Google Workspace/MDM.
-- **Takeaway for your build:** copy the architecture pattern (detect → score → policy action → audit), copy the detector taxonomy (PII/PCI/PHI/secrets), and copy the two-surface strategy (browser extension for humans + API/proxy for apps). You will substitute open-source detectors + Fireworks LLMs for Nightfall's proprietary models.
+- **Takeaway for your build:** copy the architecture pattern (detect → score → policy action → audit), copy the detector taxonomy (PII/PCI/PHI/secrets), and copy the two-surface strategy (browser extension for humans + API/proxy for apps). You will substitute open-source detectors + Fireworks LLMs for placeholdertext's proprietary models.
 
 ### PII detection approaches — comparison and recommendation
 Three families, in increasing order of context-awareness and latency:
@@ -94,7 +94,7 @@ Adopt the **reversible "anonymize → LLM → de-anonymize" sandwich** (placehol
 
 ### Datasets & evaluation
 - **ai4privacy/pii-masking-200k** (and the newer **pii-masking-300k** = OpenPII-220k + FinPII-80k) — the standard synthetic, multilingual (EN/FR/DE/IT) token-classification PII corpus; load via `datasets.load_dataset("ai4privacy/pii-masking-200k")`. Use it to (a) sanity-check your detector, (b) optionally LoRA-fine-tune on Fireworks, (c) generate demo prompts.
-- **Nightfall's own sample datasets** (help.nightfall.ai sample_data) — realistic positive + negative-lookalike samples for PII/PCI/PHI/secrets/images; excellent for building your **demo script** and false-positive tests.
+- **placeholdertext's own sample datasets** (help.placeholdertext.ai sample_data) — realistic positive + negative-lookalike samples for PII/PCI/PHI/secrets/images; excellent for building your **demo script** and false-positive tests.
 - **bigcode/bigcode-pii-dataset**, **StarPII**, and **PIIBench** (2026 unified multi-source benchmark) for stress-testing generalization.
 - **Simple metrics to report:** per-entity **precision/recall/F1** (relaxed span match), plus end-to-end **P50/P99 latency** and % of prompts that required the Fireworks stage. Keep claims honest — cite that synthetic F1 overstates real-world performance.
 
@@ -109,7 +109,7 @@ Adopt the **reversible "anonymize → LLM → de-anonymize" sandwich** (placehol
 - **Day 1 (Jul 6):** Register/claim credits (do this first — AMD Cloud + Fireworks). Spin up MI300X + vLLM endpoint; validate a "hello LLM" call on both AMD and Fireworks. Lock scope, entity taxonomy, and API contracts. Stub the repo + Docker Compose.
 - **Day 2 (Jul 7):** Ship Stage-1 regex + Stage-2 GLiNER/Piiranha on MI300X; Fireworks JSON-mode adjudicator returning typed entities + risk. Basic policy engine (block/redact/warn) + Vault.
 - **Day 3 (Jul 8):** Interception layer — browser extension intercepting ChatGPT/Claude AND the proxy path. End-to-end: prompt → detect → redact → forward → de-anonymize response. First integration.
-- **Day 4 (Jul 9):** Dashboard + audit log; run ai4privacy/Nightfall-sample eval, record precision/recall + latency; tune thresholds to cut false positives; add the reversible-redaction demo. Polish UX/coaching messages.
+- **Day 4 (Jul 9):** Dashboard + audit log; run ai4privacy/placeholdertext-sample eval, record precision/recall + latency; tune thresholds to cut false positives; add the reversible-redaction demo. Polish UX/coaching messages.
 - **Day 5 (Jul 10):** Freeze features; containerize + verify clean-run from README; record demo video + slides; write long description emphasizing product/market + AMD usage. Buffer for the **Jul 11, 15:00 UTC** deadline.
 
 ### MVP vs stretch goals
@@ -118,7 +118,7 @@ Adopt the **reversible "anonymize → LLM → de-anonymize" sandwich** (placehol
 
 ### Demo strategy (tuned to the rubric)
 - **Creativity/Originality:** show the *dual-surface* firewall (human via extension + machine via proxy) and the reversible redaction that preserves answer quality — most guardrail demos only block.
-- **Product/Market Potential:** frame as "Nightfall for everyone / open-source shadow-AI DLP." Cite the real risk (the Urban VPN prompt-harvesting incident affecting ~8M users; GDPR Article 25) and the compliance buyer (HIPAA/PCI/GDPR). "Think startup pitch, not benchmark run."
+- **Product/Market Potential:** frame as "placeholdertext for everyone / open-source shadow-AI DLP." Cite the real risk (the Urban VPN prompt-harvesting incident affecting ~8M users; GDPR Article 25) and the compliance buyer (HIPAA/PCI/GDPR). "Think startup pitch, not benchmark run."
 - **Completeness:** live end-to-end demo with a scripted prompt containing a name + SSN + credit card + API key → watch it get redacted, forwarded, and the response de-anonymized; show the audit dashboard updating.
 - **Use of AMD Platforms:** explicitly show the detector running on MI300X/ROCm/vLLM (a terminal or dashboard panel with GPU utilization), and pursue the AMD-Hosted Gemma bonus. This is a *scored* criterion — make it visually obvious.
 
