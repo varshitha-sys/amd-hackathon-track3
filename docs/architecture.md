@@ -72,4 +72,3 @@ The redaction model (Gemma) and the swap/un-swap logic run **inside the customer
 ## Related docs
 
 - [`build-plan.md`](build-plan.md) — detailed research, technical comparisons, and day-by-day build plan
-- [`pitch-notes.md`](pitch-notes.md) — pitch framing, competitive positioning vs. Nightfall AI, demo script
