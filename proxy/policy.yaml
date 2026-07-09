@@ -1,0 +1,43 @@
+# ---------------------------------------------------------------------------
+# Org-specific DLP policy (DEMO DATA for "Initech").
+#
+# This file is the one-time, offline "org onboarding" artifact. It feeds two
+# layers of detection with no retrieval / embeddings in the request path:
+#
+#   * `watchlist`  -> deterministic matcher (policy.match_watchlist):
+#                     fast, exact, case-insensitive whole-term detection of the
+#                     org's known-sensitive proper nouns. This is the
+#                     "terminology" half of org confidentiality.
+#   * `statement`  -> injected into the Tier 2 (Gemma) system prompt so the LLM
+#                     judges messages against THIS org's rules. This is the
+#                     "policy" half — categories that can't be reduced to a list.
+#
+# Roadmap: auto-generate this file by extracting terms + rules FROM an org's
+# uploaded docs (still offline). See plan.md.
+# ---------------------------------------------------------------------------
+
+statement: |
+  The following are CONFIDENTIAL to Initech and must not leave the company:
+  - Any unreleased product plans, features, or internal project codenames.
+  - Pricing, margins, discounts, and any pre-earnings financial figures.
+  - Undisclosed mergers, acquisitions, or partnership negotiations.
+  - Internal infrastructure: hostnames, IP ranges, and credentials.
+  - Non-public information about employees or customers.
+
+watchlist:
+  - term: Project Falcon        # unreleased flagship product
+    type: PROJECT_CODENAME
+  - term: Project Nightingale    # next-gen ML initiative
+    type: PROJECT_CODENAME
+  - term: Blue Harvest           # internal restructure plan
+    type: PROJECT_CODENAME
+  - term: Titan Migration        # datacenter move
+    type: PROJECT_CODENAME
+  - term: Acme Corp              # undisclosed acquisition target
+    type: ACQUISITION
+  - term: Globex                 # acquisition target
+    type: ACQUISITION
+  - term: prod-db-07.initech.internal
+    type: INTERNAL_INFRA
+  - term: vault.initech.internal
+    type: INTERNAL_INFRA
