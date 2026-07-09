@@ -36,15 +36,53 @@ You build **one component** — a local HTTPS MITM proxy that:
 2. Terminates TLS for requests to known AI API endpoints (`api.anthropic.com`,
    `generativelanguage.googleapis.com`, `api.openai.com`, `api.fireworks.ai`, etc.)
 3. Extracts the prompt/message body from the decrypted request
-4. Runs **Tier 1** (regex PII detection) locally — always
-5. Runs **Tier 2** (AMD-hosted Gemma classifier) **only when Tier 1 or a heuristic
-   flags something** — avoids an LLM round-trip on every single message (see Latency
-   note below)
+4. Runs **Tier 1** (regex PII detection) locally on **every** message — catches
+   structured PII (SSN, cards, Aadhaar, PAN, emails, API keys, IPs)
+5. Runs **Tier 2** (AMD-hosted Gemma classifier) on the subset of messages a **cheap
+   heuristic** flags as *possibly* contextually sensitive. Tier 2 catches what regex
+   structurally cannot — codenames, "we're acquiring Acme Friday", internal infra —
+   and grades severity. This avoids an LLM round-trip on every message. See
+   **Tier routing** below for the exact gate.
 6. Acts on the sensitivity label (`INFO` / `WARN` / `ACTION_NEEDED` / `BLOCK`):
    - `INFO` / `WARN`: Log and forward (optionally with redaction)
    - `ACTION_NEEDED`: Redact sensitive tokens, forward the sanitized request
    - `BLOCK`: Return an error response, do NOT forward
 7. Re-encrypts and forwards to the real endpoint
+
+### Tier routing — when does Tier 2 actually run?
+
+Tier 1 and Tier 2 are **complementary, not redundant** — they catch *different
+classes* of leak, so "it was already caught in Tier 1" only ever applies to
+structured PII. Tier 2 is **not** a backup that double-checks Tier 1.
+
+| | Tier 1 (regex — always) | Tier 2 (Gemma — gated) |
+|---|---|---|
+| Catches | **Structured**, pattern-shaped data | **Contextual / semantic** sensitivity with no fixed pattern |
+| Examples | SSN, credit card, Aadhaar, PAN, email, API keys, IPs | Project codenames, "we're acquiring Acme Friday", internal infra, "prod creds are the usual ones" |
+| Cost | ~instant, deterministic | 400ms–1.5s round-trip |
+| Blind spot | Anything without a regex pattern | (it's the safety net for exactly that) |
+
+**Gate logic (per message):**
+
+1. **Always** run Tier 1 (cheap, local).
+2. Compute a cheap, **no-LLM heuristic** risk signal: trigger words (`confidential`,
+   `internal`, `do not share`, `acquisition`, `NDA`), fenced code blocks, high-entropy
+   strings that look secret but matched no known pattern, message length, and rising
+   conversation-level risk.
+3. Call Tier 2 if **either**:
+   - **(a)** the heuristic fires — the likely-contextual-leak case regex can't see, **or**
+   - **(b)** a Tier 1 hit's *severity* is ambiguous and needs context to grade.
+4. Otherwise **fast-path forward** — no LLM.
+
+> ⚠️ **Do not gate Tier 2 on "Tier 1 found something."** That would only ever
+> LLM-check messages that *already* had a regex hit, and would **never** catch a
+> pure-context leak like "keep the Falcon acquisition confidential" — which is
+> precisely Tier 2's job. The **heuristic (step 2) is the primary gate**; an ambiguous
+> Tier 1 hit is only a secondary one.
+
+**Severity split:** Tier 1 answers *what* (which entities are present). Tier 2 answers
+*how bad, given context* (the `INFO` / `WARN` / `ACTION_NEEDED` / `BLOCK` label).
+Messages with only structured PII can be graded by rules to skip the LLM entirely.
 
 **Correct user setup (per tool — the CA cert is not optional):**
 ```bash
@@ -81,8 +119,9 @@ keys**. A judge *will* ask "why should I trust this?" Your answer:
 
 An LLM round-trip to Fireworks sits in the *request path* of every intercepted
 message. "~100–200ms" is optimistic — expect **400ms–1.5s**. Mitigation: run Tier 2
-**only when Tier 1 or a cheap heuristic flags the message**, and cache classifications
-for identical/similar inputs. Never classify every keystroke.
+**only on the subset of messages the cheap heuristic (or an ambiguous Tier 1 hit)
+flags** — see **Tier routing** above — and cache classifications for
+identical/similar inputs. Never classify every keystroke.
 
 ---
 
@@ -90,45 +129,38 @@ for identical/similar inputs. Never classify every keystroke.
 
 ```
 ai-dlp-platform/
-├── proxy/                    # Local HTTPS/TLS MITM proxy server (Node.js)
-│   ├── src/
-│   │   ├── server.js         # Proxy server entry point
-│   │   ├── interceptor.js    # Request body extraction & routing
-│   │   ├── tier1.js          # Regex-based PII detection engine
-│   │   ├── tier2.js          # Fireworks AI / Gemma API client (flagged-only)
-│   │   ├── redactor.js       # Smart token redaction logic
-│   │   └── logger.js         # Audit trail logging
+├── proxy/                    # Python DLP core: TLS MITM proxy + detection + thin API
+│   ├── tier1.py              # Tier 1: regex PII detection engine (always-on)
+│   ├── tier2.py              # Tier 2: Gemma classifier client (Fireworks / AMD), gated
+│   ├── redactor.py           # Smart token redaction ([REDACTED_*] placeholders)
+│   ├── session.py            # Conversation-level running risk score
+│   ├── logger.py             # SQLite audit trail
+│   ├── addon.py              # mitmproxy addon: intercept CLI-tool traffic → detect → act
+│   ├── api.py                # Thin HTTP /classify /logs /stats (for extension + dashboard)
+│   ├── tests/                # pytest suite (test_tier1.py, ...)
 │   ├── certs/                # DLP CA for TLS interception (dlp-ca.pem)
-│   ├── package.json
+│   ├── requirements.txt      # mitmproxy, fastapi, uvicorn, httpx, pytest
 │   └── Dockerfile
+│
+│   # The detection library (tier1/tier2/redactor/session/logger) is shared by BOTH
+│   # entrypoints: addon.py calls it in-process; api.py exposes it over HTTP.
 │
 ├── extension/                # Chrome browser extension (SAFE HERO DEMO)
 │   ├── manifest.json         # Manifest V3
 │   ├── content.js            # Content script (intercepts chat inputs, no TLS needed)
-│   ├── background.js         # Service worker (API calls to backend)
+│   ├── background.js         # Service worker (calls proxy api.py /classify)
 │   ├── popup.html/js/css     # Extension popup UI
 │   └── icons/
-│
-├── backend/                  # Classification API server (Python/FastAPI)
-│   ├── app/
-│   │   ├── main.py           # FastAPI app
-│   │   ├── classifier.py     # Gemma inference (Fireworks AI or AMD Dev Cloud)
-│   │   ├── patterns.py       # PII regex patterns library
-│   │   ├── redactor.py       # Redaction engine
-│   │   ├── session.py        # Conversation-level running risk score
-│   │   └── models.py         # Request/response schemas
-│   ├── requirements.txt
-│   └── Dockerfile
 │
 ├── dashboard/                # Compliance dashboard (simple web UI)
 │   ├── index.html
 │   ├── style.css
-│   └── app.js
+│   └── app.js                # Reads proxy api.py /logs + /stats
 │
 ├── openclaw-hook/            # (Stretch) Native OpenClaw message_sending hook
 │   └── message_filter.js
 │
-├── docker-compose.yml        # Full stack orchestration
+├── docker-compose.yml        # Orchestrates proxy (addon + api) + dashboard
 ├── setup.sh                  # One-command setup (generates CA, sets env vars)
 └── README.md
 ```
@@ -149,15 +181,15 @@ ai-dlp-platform/
 
 | # | Task | Details | Est. Time |
 |---|------|---------|-----------|
-| 1 | **🔴 SPIKE: TLS MITM proxy vs. real Claude Code** | **Do this before anything else.** Stand up a minimal MITM proxy (e.g. `http-mitm-proxy` / mitmproxy), generate `dlp-ca.pem`, set `HTTPS_PROXY` **+ `NODE_EXTRA_CA_CERTS`**, run Claude Code, and confirm you can read the decrypted request body to `api.anthropic.com`. Success = you print an outbound prompt. Failure by ~1pm → pivot hero demo to the extension. | 2-3 hours (time-boxed) |
-| 2 | **Project scaffolding** | Initialize monorepo, set up `proxy/`, `backend/`, `extension/`, `dashboard/`. Init `package.json`, `requirements.txt`, basic Dockerfiles. | 1 hour |
-| 3 | **Tier 1: Regex PII detection engine** | Build `patterns.py` / `tier1.js`: Aadhaar, PAN, Indian phone numbers, SSNs, credit cards, emails, IPs, API keys/secrets (AWS, GCP, GitHub tokens), plaintext passwords, URLs with auth tokens. Test with sample inputs. | 2-3 hours |
-| 4 | **Tier 2: Gemma classification (Fireworks AI)** | Set up Fireworks AI client. Write a Gemma system prompt classifying text into `INFO`/`WARN`/`ACTION_NEEDED`/`BLOCK`, detecting: org-specific terms, project codenames, internal infra, government credential patterns. Few-shot examples in the prompt. Test with nuanced cases regex misses. | 2-3 hours |
-| 5 | **Backend API server (FastAPI)** | Build `/classify`: takes a prompt string, runs Tier 1 always + Tier 2 **only if flagged**, returns detected entities, sensitivity label, redacted text, confidence, tier. | 2-3 hours |
-| 6 | **Wire proxy → backend** | Extend the Day-1 spike proxy to call the backend `/classify` and act on the label (forward / redact-and-forward / block). | 2-3 hours |
-| 7 | **Test end-to-end with Claude Code** | With proxy + backend running, type a PII prompt in Claude Code, verify it's caught, redacted, or blocked. | 1 hour |
+| 1 | **🔴 SPIKE: TLS MITM proxy vs. real Claude Code** | **Do this before anything else.** Stand up a minimal MITM proxy (`mitmproxy`, Python), generate `dlp-ca.pem`, set `HTTPS_PROXY` **+ `NODE_EXTRA_CA_CERTS`**, run Claude Code, and confirm you can read the decrypted request body to `api.anthropic.com`. Success = you print an outbound prompt. Failure by ~1pm → pivot hero demo to the extension. | 2-3 hours (time-boxed) |
+| 2 | **Project scaffolding** | Initialize monorepo: single Python `proxy/` package (no separate backend, no Node), plus `extension/`, `dashboard/`. Create `proxy/requirements.txt`, `Dockerfile`, and empty module placeholders. | 1 hour |
+| 3 | **Tier 1: Regex PII detection engine** | Build `proxy/tier1.py`: Aadhaar, PAN, Indian phone numbers, SSNs, credit cards, emails, IPs, API keys/secrets (AWS, GCP, GitHub tokens), plaintext passwords, URLs with auth tokens. Luhn/Verhoeff validation. `detect(text) → [{type,value,start,end}]`. pytest suite. | 2-3 hours |
+| 4 | **Tier 2: Gemma classification (Fireworks AI)** | Build `proxy/tier2.py`: Fireworks AI client + a Gemma system prompt classifying text into `INFO`/`WARN`/`ACTION_NEEDED`/`BLOCK`, detecting org-specific terms, project codenames, internal infra, government credential patterns. Few-shot examples. Test with nuanced cases regex misses. | 2-3 hours |
+| 5 | **Classification core + thin `/classify` API** | In `proxy/api.py` (FastAPI, lightweight — reuses tier1/tier2/redactor, **not** a separate backend service): `/classify` runs Tier 1 always + Tier 2 **only when the heuristic (or an ambiguous Tier 1 hit) flags** — see Tier routing. Returns entities, sensitivity label, redacted text, confidence, tier, session risk. Serves the extension + dashboard. | 2-3 hours |
+| 6 | **Wire mitmproxy addon → detection core** | Extend the Day-1 spike into `proxy/addon.py`: extract the request body and call the detection library **in-process** (no HTTP hop), then act on the label (forward / redact-and-forward / block). | 2-3 hours |
+| 7 | **Test end-to-end with Claude Code** | With the proxy running, type a PII prompt in Claude Code, verify it's caught, redacted, or blocked. | 1 hour |
 
-**Day 1 Deliverable:** Proxy + backend catching PII in Claude Code prompts — **or**, if
+**Day 1 Deliverable:** Python proxy catching PII in Claude Code prompts — **or**, if
 the spike failed, a green light to pivot to the extension as hero and a clear record of
 why.
 
@@ -172,12 +204,12 @@ AMD story.
 
 | # | Task | Details | Est. Time |
 |---|------|---------|-----------|
-| 8 | **Chrome extension — content script (HERO DEMO)** | Manifest V3. Content script hooks textarea/input on `chat.openai.com`, `claude.ai`, `gemini.google.com`, reads text before submit, calls `/classify`, shows inline overlay with the label. `ACTION_NEEDED` → redacted preview + confirm. `BLOCK` → prevent submission + alert. **This needs no TLS MITM — it's your most reliable stage demo.** | 4-5 hours |
+| 8 | **Chrome extension — content script (HERO DEMO)** | Manifest V3. Content script hooks textarea/input on `chat.openai.com`, `claude.ai`, `gemini.google.com`, reads text before submit, calls the proxy's `/classify` (`proxy/api.py`), shows inline overlay with the label. `ACTION_NEEDED` → redacted preview + confirm. `BLOCK` → prevent submission + alert. **This needs no TLS MITM — it's your most reliable stage demo.** | 4-5 hours |
 | 9 | **Chrome extension — popup UI** | Protection on/off toggle, recent interceptions count, link to dashboard. | 1-2 hours |
-| 10 | **Backend: session-level running risk score** | Implement `session.py`: keep a per-session buffer, re-score the *running thread* so cumulative context bumps the label even when each message looks benign. Keep it minimal but **real** — this is the headline differentiator; do not hardcode it. | 2-3 hours |
-| 11 | **Compliance dashboard** | Single page: real-time log of intercepted prompts (timestamp, tool, label, snippet), label-distribution chart, filterable table. Source: backend `/logs` + `/stats`. | 3-4 hours |
-| 12 | **Backend: logging & audit trail** | SQLite logging: timestamp, source (proxy/extension), original-text **hash** (never raw), detected entities, label, action. Expose `/logs` and `/stats`. | 2-3 hours |
-| 13 | **(If proxy spike succeeded early) Deploy Gemma on AMD Developer Cloud** | Stand up the classifier on an MI300X instance via vLLM/ROCm so the AMD story is "we ran inference on MI300X," not "we called an API that happens to use AMD." Fall back to Fireworks if time runs out. | 2-4 hours |
+| 10 | **Detection core: session-level running risk score** | Implement `proxy/session.py`: keep a per-session buffer, re-score the *running thread* so cumulative context bumps the label even when each message looks benign. Keep it minimal but **real** — this is the headline differentiator; do not hardcode it. | 2-3 hours |
+| 11 | **Compliance dashboard** | Single page: real-time log of intercepted prompts (timestamp, tool, label, snippet), label-distribution chart, filterable table. Source: proxy `/logs` + `/stats` (`proxy/api.py`). | 3-4 hours |
+| 12 | **Detection core: logging & audit trail** | `proxy/logger.py`, SQLite: timestamp, source (proxy/extension), original-text **hash** (never raw), detected entities, label, action. Expose `/logs` and `/stats` via `proxy/api.py`. | 2-3 hours |
+| 13 | **(If proxy spike succeeded early) Deploy Gemma on AMD Developer Cloud** | Stand up the classifier on an MI300X instance via vLLM/ROCm and point `proxy/tier2.py` at that endpoint, so the AMD story is "we ran inference on MI300X," not "we called an API that happens to use AMD." Fall back to Fireworks if time runs out. | 2-4 hours |
 | 14 | **Test with Antigravity & OpenClaw** | Verify proxy interception (`HTTPS_PROXY` **+ CA**) works with `agy` and `openclaw`; try the native OpenClaw `message_sending` hook. Document quirks. | 1-2 hours |
 | 15 | **Smart redaction refinement** | Named placeholders: `[REDACTED_EMAIL]`, `[REDACTED_IP]`, `[REDACTED_CREDENTIAL]`, etc. Keep the redacted prompt useful to the model. | 1-2 hours |
 
@@ -192,7 +224,7 @@ real; proxy working across CLI tools; AMD inference story firmed up.
 
 | # | Task | Details | Est. Time |
 |---|------|---------|-----------|
-| 16 | **Containerization** | `docker-compose.yml` spinning up backend, dashboard, proxy. One-command startup: `docker-compose up`. | 2-3 hours |
+| 16 | **Containerization** | `docker-compose.yml` spinning up the proxy (mitmproxy addon + `api.py`) and dashboard. One-command startup: `docker-compose up`. | 2-3 hours |
 | 17 | **README & documentation** | Problem, architecture diagram, **correct** setup instructions (incl. `NODE_EXTRA_CA_CERTS`), screenshots, tech stack, **AMD infrastructure usage** (be specific — see below). | 1-2 hours |
 | 18 | **Setup script** | `setup.sh` / `setup.ps1`: install deps, **generate the DLP CA**, set `HTTPS_PROXY` + `NODE_EXTRA_CA_CERTS`, start all services. | 1 hour |
 | 19 | **Demo video (max 5 min)** | (1) Problem 30s, (2) Architecture 30s, (3) **Hero: extension catching PII on ChatGPT 1 min**, (4) Proxy catching PII in Claude Code 1 min, (5) Dashboard audit trail 30s, (6) **AMD usage** 30s, (7) Startup vision / market 1 min. | 2-3 hours |
@@ -211,7 +243,7 @@ Cut ruthlessly. Priority order:
 
 | Priority | Component | Why |
 |----------|-----------|-----|
-| **P0 (Must Have)** | Backend API with Tier 1 + Tier 2 detection | This IS the product |
+| **P0 (Must Have)** | Detection core (Tier 1 + Tier 2) + thin `/classify` API in `proxy/` | This IS the product |
 | **P0 (Must Have)** | **Browser extension (hero demo)** | Reliable on stage, no TLS MITM, visual and impressive |
 | **P0 (Must Have)** | Demo video + slides | You literally cannot win without these |
 | **P1 (Should Have)** | Local DLP proxy (Claude Code first) | Your true differentiator — but higher risk; Claude Code is the safe target |
@@ -233,19 +265,19 @@ Cut ruthlessly. Priority order:
 
 | Component | Technology | Why |
 |-----------|------------|-----|
-| Backend API | Python + FastAPI | Fast to build, great for ML/AI integration |
+| DLP core + `/classify` API | Python + FastAPI (thin, inside `proxy/`) | One codebase shared by the proxy addon and the extension; no separate backend |
 | PII Detection (Tier 1) | Regex (Python `re`) | Fast, no dependencies, runs locally |
 | AI Classification (Tier 2) | Gemma via Fireworks AI (AMD MI300X) — or self-hosted on AMD Dev Cloud | Uses AMD MI300X for inference |
-| Local Proxy | Node.js (`http-mitm-proxy` or `mitmproxy`) | Mature TLS-MITM interception libraries |
+| Local Proxy | Python + `mitmproxy` | Mature TLS-MITM interception; Python lets the proxy share the detection library directly |
 | Browser Extension | Vanilla JS + Chrome Manifest V3 | No framework needed for hackathon scope |
-| Dashboard | HTML + CSS + Vanilla JS | Simple, no build step, serves from backend |
+| Dashboard | HTML + CSS + Vanilla JS | Simple, no build step; reads the proxy `/logs` + `/stats` API |
 | Database | SQLite | Zero config, file-based, good enough for demo |
 | Containerization | Docker + docker-compose | Submission requirement |
 | AMD Infrastructure | AMD Developer Cloud (MI300X) + Fireworks AI | Hackathon requirement |
 
 ---
 
-## Key API Endpoints (Backend)
+## Key API Endpoints (proxy `api.py`)
 
 ```
 POST /api/classify
@@ -302,7 +334,7 @@ Make this crystal clear — and **avoid fluff**. AMD engineers are judging; vagu
 | Extension content script breaks on site updates | Target stable DOM elements. Test on the specific ChatGPT/Claude/Gemini versions the day of submission. |
 | "Why trust a proxy that decrypts my keys?" | Local-only, open source, keys never logged (text is hashed), user-generated CA. Put this on a slide. |
 | Latency in request path | Tier-2-on-flag-only + caching. Expect 400ms–1.5s per LLM call; don't classify every message. |
-| Time pressure | Follow the revised P0/P1/P2 list. Cut proxy-across-all-tools and native hooks first; keep extension + backend + real session scoring. |
+| Time pressure | Follow the revised P0/P1/P2 list. Cut proxy-across-all-tools and native hooks first; keep extension + detection core + real session scoring. |
 | Gemma classification accuracy | Prompt-engineer Day 1 with few-shot examples. Don't fine-tune (no time) — use prompted inference. |
 
 ---
