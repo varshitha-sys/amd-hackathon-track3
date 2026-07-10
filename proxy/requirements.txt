@@ -1,9 +1,12 @@
-# DLP proxy runtime + test deps.
-# The Tier 1 engine (tier1.py) is pure stdlib; nothing below is needed to import it.
-mitmproxy>=10.0    # TLS MITM proxy runtime (addon.py) — run via .venv so it sees these deps
-openai>=1.40       # Fireworks (Gemma) via its OpenAI-compatible API — Tier 2 (tier2.py)
-fastapi>=0.110     # thin /classify HTTP surface (api.py)
-uvicorn>=0.29      # ASGI server to run api.py
-pyyaml>=6.0        # loads the org policy.yaml (policy.py)
-python-dotenv>=1.0 # auto-loads repo-root .env so Tier 2 creds reach every entrypoint
-pytest>=8.0        # test suite
+# CLOAKWELL dependencies (downgraded fastapi/pydantic slightly to support mitmproxy on Python 3.10)
+typing-extensions==4.11.0
+pydantic==2.7.4
+pydantic-core==2.18.4
+fastapi==0.110.0
+mitmproxy==10.4.0
+openai==1.40.0
+uvicorn==0.50.2
+pyyaml==6.0.1
+python-dotenv==1.0.1
+httpx==0.28.1
+pytest==8.0.0

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLOAKWELL — Local-First AI Redaction Layer</title>
+  <!-- Google Fonts: Inter for UI, JetBrains Mono for raw data -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Ambient background glow blobs -->
+  <div class="bg-glow bg-glow-left"></div>
+  <div class="bg-glow bg-glow-right"></div>
+
+  <div class="app-container">
+    <header class="app-header">
+      <div class="logo-area">
+        <!-- SVG Icon representing a shield/filter -->
+        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L3 7V13C3 17.6 6.8 21.7 12 22C17.2 21.7 21 17.6 21 13V7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M9 11L11 13L15 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="logo-text">CLOAKWELL</span>
+      </div>
+      <h1 class="subtitle">Local-First AI Redaction Layer</h1>
+      <div class="amd-badge">
+        <span class="pulse-dot"></span>
+        Secured by AMD Instinct™ MI300X
+      </div>
+    </header>
+
+    <main class="app-main">
+      <!-- Input Card -->
+      <section class="card input-card">
+        <div class="card-header">
+          <h2>Test Your Prompt</h2>
+          <p class="description">Enter text containing sensitive data (e.g. names, emails, keys) to see CLOAKWELL in action.</p>
+        </div>
+        <form id="redact-form" class="prompt-form">
+          <div class="textarea-wrapper">
+            <textarea id="prompt-input" placeholder="My name is Sarah Connor and my SSN is 999-12-3456. Let's deploy API key sk-live-5566 to production. How should I proceed?" required></textarea>
+          </div>
+          <button type="submit" id="submit-btn" class="btn btn-primary">
+            <span class="btn-text">Redact & Ask AI</span>
+            <span class="spinner" hidden></span>
+          </button>
+        </form>
+      </section>
+
+      <!-- Dynamic Message Banner (Error/Info) -->
+      <div id="status-banner" class="status-banner" hidden>
+        <span class="banner-icon">⚠️</span>
+        <span class="banner-text"></span>
+      </div>
+
+      <!-- Entity Badges Container -->
+      <section id="entities-section" class="entities-section" hidden>
+        <div class="section-title">DETECTION OVERVIEW</div>
+        <div id="badge-list" class="badge-list">
+          <!-- Dynamically populated badges -->
+        </div>
+      </section>
+
+      <!-- Side-by-Side Comparison Panels -->
+      <section class="results-grid">
+        <!-- Left Panel: What left this machine -->
+        <article class="card panel redacted-panel">
+          <div class="panel-header header-redacted">
+            <div class="badge-tag tag-sensitive">NETWORK EGRESS</div>
+            <h3>What actually left this machine</h3>
+            <p class="description">The sanitized prompt sent to the cloud model. Real data is replaced with reversible placeholders.</p>
+          </div>
+          <div class="panel-body">
+            <div id="redacted-content" class="output-text code-font">
+              <span class="placeholder-text">Pending prompt submission...</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Right Panel: Final answer -->
+        <article class="card panel response-panel">
+          <div class="panel-header header-response">
+            <div class="badge-tag tag-clean">USER VIEW</div>
+            <h3>Final answer</h3>
+            <p class="description">The final response returned to the user, with original values seamlessly restored locally.</p>
+          </div>
+          <div class="panel-body">
+            <div id="response-content" class="output-text">
+              <span class="placeholder-text">Pending prompt submission...</span>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>© 2026 CLOAKWELL. Built with AMD Developer Cloud & ROCm.</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
