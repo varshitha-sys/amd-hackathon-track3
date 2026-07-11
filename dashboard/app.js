@@ -1,4 +1,9 @@
 document.addEventListener('DOMContentLoaded', () => {
+  // Use localhost:8000 if hosted on a live URL, otherwise use relative paths (when served by FastAPI locally)
+  const BACKEND_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? ''
+    : 'http://localhost:8000';
+
   const form = document.getElementById('redact-form');
   const input = document.getElementById('prompt-input');
   const submitBtn = document.getElementById('submit-btn');
@@ -34,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
     hideStatus();
     
     try {
-      const response = await fetch('/redact-and-ask', {
+      const response = await fetch(`${BACKEND_URL}/redact-and-ask`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -189,7 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function fetchStats() {
     try {
-      const res = await fetch('/api/stats');
+      const res = await fetch(`${BACKEND_URL}/api/stats`);
       if (!res.ok) throw new Error('Failed to fetch stats');
       const stats = await res.json();
       if (stats) {
@@ -204,7 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function fetchLogs() {
     try {
-      const res = await fetch('/api/logs?limit=50');
+      const res = await fetch(`${BACKEND_URL}/api/logs?limit=50`);
       if (!res.ok) throw new Error('Failed to fetch logs');
       const logs = await res.json();
       

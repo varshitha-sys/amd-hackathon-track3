@@ -61,6 +61,16 @@ Clean prompts contain no PII and are transparently routed to public cloud models
 
 ---
 
+## 📊 Local & Hosted Dashboard
+
+Cloakwell AI includes a web-based dashboard to monitor redact/block statistics and view a live transaction log of data evaluation:
+
+* **Local Mode:** When the FastAPI proxy runs, visit `http://localhost:8000/` to access the dashboard locally (served directly by the backend).
+* **Hosted Mode (Render/Vercel):** Because the dashboard is built with pure static assets, it can be hosted independently on a cloud platform (like Render or Vercel). 
+  * *How it works:* The hosted dashboard includes a dynamic router that automatically tunnels requests to your local background service running at `http://localhost:8000` via CORS. This allows judges to inspect the web dashboard live while it monitors their local background proxy.
+
+---
+
 ## 📄 License
 
 MIT — see [LICENSE](LICENSE).
