@@ -27,7 +27,7 @@ import logger
 
 logger.init_db()
 
-app = FastAPI(title="AI DLP — Classification API")
+app = FastAPI(title="Cloakwell DLP")
 
 # The extension and dashboard call this from other origins; open CORS for the demo.
 app.add_middleware(
