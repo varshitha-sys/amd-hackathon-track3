@@ -146,6 +146,7 @@ def classify(
     context=None,
     policy=None,
     tier2_client=None,
+    log: bool = True,
 ) -> dict:
     pol = policy if policy is not None else _default_policy
 
@@ -190,17 +191,18 @@ def classify(
     elif label == "ACTION_NEEDED":
         action = "redact"
         
-    try:
-        logger.log_transaction(
-            source=source,
-            original_text=text,
-            redacted_text=redaction.redacted_text,
-            entities=entities,
-            label=label,
-            action=action
-        )
-    except Exception as e:
-        print(f"[DLP logger error]: Failed to log transaction: {e}")
+    if log:
+        try:
+            logger.log_transaction(
+                source=source,
+                original_text=text,
+                redacted_text=redaction.redacted_text,
+                entities=entities,
+                label=label,
+                action=action
+            )
+        except Exception as e:
+            print(f"[DLP logger error]: Failed to log transaction: {e}")
 
     return {
         "label": label,

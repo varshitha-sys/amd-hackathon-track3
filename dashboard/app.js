@@ -225,8 +225,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       logsTbody.innerHTML = logs.map(log => {
-        const date = new Date(log.timestamp);
-        const formattedDate = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + 
+        const date = new Date(log.timestamp.replace(' ', 'T') + 'Z');
+        const formattedDate = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) +
                              ' ' + date.toLocaleDateString();
 
         let labelClass = 'tag-clean';
@@ -269,4 +269,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Load initial stats & logs
   updateDashboardData();
+
+  // Poll for new transactions (e.g. from Claude Code via the mitmproxy addon)
+  // so the dashboard stays live without a manual refresh.
+  const POLL_INTERVAL_MS = 5000;
+  setInterval(updateDashboardData, POLL_INTERVAL_MS);
 });

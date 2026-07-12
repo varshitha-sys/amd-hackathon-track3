@@ -79,6 +79,13 @@ def decide(result: dict) -> str:
     return _ACTION_BY_LABEL.get(result.get("label", "INFO"), "forward")
 
 
+def is_title_gen_call(prompt: str) -> bool:
+    """Claude Code wraps the user's prompt in <session> tags on a separate,
+    internal request that asks for a short conversation title. Not needed in audit_log"""
+    stripped = prompt.strip()
+    return stripped.startswith("<session>") and "Write the title" in stripped
+
+
 def _block_body(result: dict) -> str:
     """An API-error-shaped payload so the CLI tool surfaces a clear message."""
     entities = ", ".join(sorted({e.get("type", "") for e in result.get("entities", [])}))
@@ -108,7 +115,9 @@ class DLPAddon:
             return
 
         session_id = getattr(getattr(flow, "client_conn", None), "id", "proxy")
-        result = engine.classify(prompt, session_id=str(session_id), source="proxy")
+        result = engine.classify(
+            prompt, session_id=str(session_id), source="proxy", log=not is_title_gen_call(prompt)
+        )
         action = decide(result)
 
         label = result["label"]
