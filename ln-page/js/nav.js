@@ -15,7 +15,7 @@ export function renderNav(activePage) {
   return `
     <nav class="nav" x-data="{ open: false }" aria-label="Primary">
       <a class="nav-brand" href="${site.pages.home.href}">
-        <img src="assets/crow-imogen-oh.png" alt="" class="nav-logo" />
+        <img src="assets/crow-imogen-oh-white.png" alt="" class="nav-logo" />
         <span>${site.shortName}</span>
       </a>
       <ul class="nav-links">

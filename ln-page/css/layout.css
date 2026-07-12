@@ -28,11 +28,12 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  transition: color 0.15s ease;
+  transition: opacity 0.15s ease;
 }
 
 .nav-brand:hover {
-  color: var(--color-prussian-soft);
+  color: var(--color-white);
+  opacity: 0.85;
 }
 
 .nav-logo {
