@@ -28,6 +28,11 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
+  transition: color 0.15s ease;
+}
+
+.nav-brand:hover {
+  color: var(--color-prussian-soft);
 }
 
 .nav-logo {
@@ -50,6 +55,7 @@
   color: var(--color-muted);
   text-decoration: none;
   font-weight: 500;
+  transition: color 0.15s ease;
 }
 
 .nav-links a:hover,
