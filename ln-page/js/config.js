@@ -2,7 +2,7 @@
 export const site = {
   name: "CloakWell",
   shortName: "CloakWell",
-  githubUrl: "https://github.com/varshitha-sys/amd-hackathon-track3",
+  githubUrl: "https://github.com/varshitha-sys/cloakwell-ai",
   githubLabel: "GitHub",
   pages: {
     home: { href: "index.html", label: "Home" },
