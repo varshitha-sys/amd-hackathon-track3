@@ -22,7 +22,7 @@ Static marketing site for the local-first AI redaction project (AMD Hackathon Tr
 
 - **Home** → `index.html`
 - **Download** → `download.html` (install / run instructions)
-- **GitHub** → external link to `https://github.com/varshitha-sys/amd-hackathon-track3`
+- **GitHub** → external link to `https://github.com/varshitha-sys/cloakwell-ai`
 
 ## Local preview
 
